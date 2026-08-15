@@ -54,27 +54,39 @@
   #calendar-view{ padding:14px; max-width:900px; margin:0 auto; }
   .phase-legend{ display:flex; gap:16px; font-size:12px; margin:6px 0 16px; color:#4a453d;}
   .phase-legend .sw{ display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:5px; vertical-align:-1px;}
-  .month-block{ margin-bottom:22px; }
-  .month-title{ font-size:18px; margin:0 0 8px 2px; }
-  .cal-grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:5px; }
-  .cal-dow{ font-size:11px; text-align:center; color:#8a8272; padding-bottom:2px;}
+  .month-badge{
+    position:absolute; top:2px; left:3px; font-size:8.5px; font-weight:800; color:var(--brick);
+    background:rgba(255,255,255,.85); padding:0 3px; border-radius:3px; letter-spacing:.02em; z-index:2;
+  }
+  .cal-grid{
+    display:grid; grid-template-columns:repeat(7,1fr); gap:3px;
+    grid-auto-rows: 1fr;
+  }
   .cal-cell{
-    background:var(--paper); border-radius:8px; padding:6px 5px; min-height:58px;
-    border-left:4px solid transparent; cursor:pointer; box-shadow:var(--shadow);
-    display:flex; flex-direction:column; justify-content:space-between;
-    transition:transform .1s;
+    position:relative;
+    background:var(--paper); border-radius:6px; padding:3px 3px 2px;
+    border-left:3px solid transparent; cursor:pointer; box-shadow:var(--shadow);
+    display:flex; flex-direction:column; justify-content:flex-start;
+    transition:transform .1s; overflow:hidden;
+    aspect-ratio: 1 / 0.82;
   }
   .cal-cell:active{ transform:scale(.96); }
   .cal-cell.camino{ border-left-color:var(--pine); }
   .cal-cell.dolomiti{ border-left-color:var(--stone); }
-  .cal-cell.empty{ visibility:hidden; }
-  .cal-cell .num{ font-size:12px; font-weight:700; color:#8a8272; }
-  .cal-cell .city{ font-size:11.5px; line-height:1.25; font-weight:600; word-break:keep-all; }
   .cal-cell.transition{ outline:2px solid var(--shell); }
+  .cal-cell .num{ font-size:10.5px; font-weight:700; color:#8a8272; line-height:1.1;}
+  .cal-cell .city{ font-size:9.5px; line-height:1.15; font-weight:600; word-break:keep-all;
+    display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; margin-top:1px;}
 
   /* essential info */
   #essential{ margin-top:10px; }
-  #essential h2{ font-size:16px; margin:0 0 10px 2px; display:flex; align-items:center; gap:8px;}
+  #essential h2{ font-size:16px; margin:0 0 10px 2px; display:flex; align-items:center; gap:6px;}
+  #essential h2 .sheet-link{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:22px; height:22px; border-radius:6px; background:var(--paper); border:1px solid var(--line);
+    cursor:pointer; flex-shrink:0;
+  }
+  #essential h2 .sheet-link svg{ width:13px; height:13px; }
   .info-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:8px; }
   .info-card{
     background:var(--paper); border-radius:8px; padding:10px 12px; box-shadow:var(--shadow);
@@ -152,7 +164,7 @@
 <body>
 
 <div style="background:#9C4A34; color:#fff; text-align:center; font-size:12px; padding:5px; font-weight:700; letter-spacing:.02em;">
-  빌드 버전: v2.2 (자동 동기화) · 2026-08-15
+  빌드 버전: v2.3 (캘린더 압축 + 시트 링크) · 2026-08-16
 </div>
 
 <div id="topbar">
@@ -172,7 +184,7 @@
   <div id="months"></div>
 
   <div id="essential">
-    <h2>필수 정보</h2>
+    <h2>필수 정보 <span class="sheet-link" id="sheetLinkBtn" title="구글시트 열기"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="3" width="18" height="18" rx="2" stroke="#1B4B43" stroke-width="1.8"/><path d="M3 9h18M9 9v12" stroke="#1B4B43" stroke-width="1.8"/></svg></span></h2>
     <div class="info-grid" id="info-grid"></div>
   </div>
 
@@ -331,32 +343,23 @@ function saveDayField(date, field, value){
 }
 loadItinerary();
 
-/* ---------------- calendar view ---------------- */
-function buildMonth(year, monthIndex, monthLabel, days){
-  const first = new Date(year, monthIndex, 1);
-  const startDow = first.getDay();
-  const daysInMonth = new Date(year, monthIndex+1, 0).getDate();
-
-  let html = `<div class="month-block"><div class="month-title serif">${monthLabel}</div><div class="cal-grid">`;
-  ['일','월','화','수','목','금','토'].forEach(w=> html += `<div class="cal-dow">${w}</div>`);
-  for(let i=0;i<startDow;i++) html += `<div class="cal-cell empty"></div>`;
-  for(let dnum=1; dnum<=daysInMonth; dnum++){
-    const dateStr = `${year}-${String(monthIndex+1).padStart(2,'0')}-${String(dnum).padStart(2,'0')}`;
-    const day = itinerary.find(d=>d.date===dateStr);
-    if(!day){ html += `<div class="cal-cell empty"></div>`; continue; }
-    const isTransition = dateStr === "2026-09-28";
-    html += `<div class="cal-cell ${day.phase}${isTransition?' transition':''}" data-date="${dateStr}">
-      <div class="num">${dnum}</div>
-      <div class="city">${day.city.length>14 ? day.city.slice(0,13)+'…' : day.city}</div>
-    </div>`;
-  }
-  html += `</div></div>`;
-  return html;
-}
-
+/* ---------------- calendar view (연속 흐름, 월 구분은 뱃지로만 표시) ---------------- */
 function renderCalendar(){
-  document.getElementById('months').innerHTML =
-    buildMonth(2026,8,'9월 · September') + buildMonth(2026,9,'10월 · October');
+  let html = `<div class="cal-grid">`;
+  itinerary.forEach(day=>{
+    const d = new Date(day.date+'T00:00:00');
+    const dnum = d.getDate();
+    const isFirstOfMonth = dnum === 1 || day === itinerary[0];
+    const isTransition = day.date === "2026-09-28";
+    const monthBadge = isFirstOfMonth ? `<div class="month-badge">${d.getMonth()+1}월</div>` : '';
+    html += `<div class="cal-cell ${day.phase}${isTransition?' transition':''}" data-date="${day.date}">
+      ${monthBadge}
+      <div class="num">${dnum}</div>
+      <div class="city">${day.city.length>16 ? day.city.slice(0,15)+'…' : day.city}</div>
+    </div>`;
+  });
+  html += `</div>`;
+  document.getElementById('months').innerHTML = html;
   document.querySelectorAll('.cal-cell[data-date]').forEach(cell=>{
     cell.addEventListener('click', ()=> openDay(cell.dataset.date));
   });
@@ -397,6 +400,16 @@ function openModal(key,label){
   };
 }
 document.getElementById('modalClose').onclick = ()=> document.getElementById('modal-bg').style.display='none';
+
+/* 필수정보 옆 아이콘 -> 실제 편집 가능한 구글시트 링크로 이동 (최초 1회 입력받아 저장) */
+document.getElementById('sheetLinkBtn').addEventListener('click', ()=>{
+  let url = store.get('sheet_edit_url');
+  if(!url){
+    url = prompt('구글시트 편집 링크를 붙여넣어 주세요 (예: https://docs.google.com/spreadsheets/d/.../edit)');
+    if(url) store.set('sheet_edit_url', url.trim());
+  }
+  if(url) window.open(url, '_blank');
+});
 
 /* ---------------- day view ---------------- */
 let currentIndex = 0;
