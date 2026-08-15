@@ -152,7 +152,7 @@
 <body>
 
 <div style="background:#9C4A34; color:#fff; text-align:center; font-size:12px; padding:5px; font-weight:700; letter-spacing:.02em;">
-  빌드 버전: v2.1 (모바일 레이아웃 수정) · 2026-07-28
+  빌드 버전: v2.2 (자동 동기화) · 2026-08-15
 </div>
 
 <div id="topbar">
@@ -527,22 +527,29 @@ function applyParsedRows(rows){
   return count;
 }
 
-document.getElementById('syncBtn').addEventListener('click', async ()=>{
-  const url = document.getElementById('sheetUrl').value.trim();
-  const msg = document.getElementById('syncMsg');
-  if(!url){ msg.textContent = 'CSV 링크를 먼저 입력하세요.'; return; }
+async function syncFromUrl(url, msgEl, silent){
+  if(!url) return;
   store.set('sheet_url', url);
-  msg.textContent = '동기화 중...';
+  if(msgEl) msgEl.textContent = silent ? '자동 동기화 중...' : '동기화 중...';
   try{
     const res = await fetch(url);
     if(!res.ok) throw new Error('HTTP '+res.status);
     const text = await res.text();
     const rows = parseCSV(text, ',');
     const count = applyParsedRows(rows);
-    msg.textContent = `동기화 완료 (${count}개 행 반영) — ${new Date().toLocaleTimeString('ko-KR')}`;
+    if(msgEl) msgEl.textContent = `동기화 완료 (${count}개 행 반영) — ${new Date().toLocaleTimeString('ko-KR')}`;
+    return true;
   }catch(e){
-    msg.textContent = '동기화 실패 (' + (e && e.message ? e.message : e) + '). 인터넷 연결, 링크(공개 CSV 게시 여부), 또는 이 파일을 로컬(file://)로 열었다면 브라우저가 외부 요청을 막았을 가능성을 확인하세요. 아래 "붙여넣기" 방식을 대신 써보세요.';
+    if(msgEl) msgEl.textContent = (silent ? '자동 ' : '') + '동기화 실패 (' + (e && e.message ? e.message : e) + '). 인터넷 연결, 링크(공개 CSV 게시 여부), 또는 이 파일을 로컬(file://)로 열었다면 브라우저가 외부 요청을 막았을 가능성을 확인하세요. 아래 "붙여넣기" 방식을 대신 써보세요.';
+    return false;
   }
+}
+
+document.getElementById('syncBtn').addEventListener('click', ()=>{
+  const url = document.getElementById('sheetUrl').value.trim();
+  const msg = document.getElementById('syncMsg');
+  if(!url){ msg.textContent = 'CSV 링크를 먼저 입력하세요.'; return; }
+  syncFromUrl(url, msg, false);
 });
 
 document.getElementById('pasteSyncBtn').addEventListener('click', ()=>{
@@ -559,9 +566,20 @@ document.getElementById('pasteSyncBtn').addEventListener('click', ()=>{
     msg.textContent = '적용 실패 (' + (e && e.message ? e.message : e) + '). 헤더 행(date, city, ...)을 포함해서 붙여넣었는지 확인하세요.';
   }
 });
+
+/* 이 프로젝트의 published CSV 주소를 기본값으로 심어둠 — 기기마다 따로 입력할 필요 없이
+   앱을 열 때마다 자동으로 이 시트에서 최신 데이터를 가져온다 (PC에서 갱신하면 폰도 다음에 열 때 자동 반영). */
+const DEFAULT_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRus91-fF_DO1XnCZu8TdaIwsjV-6XsVkZSJVVv0-KkeBNhXZZkZn_z0g44cy119xKeg1r2kUncMpX2/pub?gid=1006013243&single=true&output=csv';
+
 {
-  const savedUrl = store.get('sheet_url');
-  if(savedUrl) document.getElementById('sheetUrl').value = savedUrl;
+  const savedUrl = store.get('sheet_url') || DEFAULT_SHEET_URL;
+  document.getElementById('sheetUrl').value = savedUrl;
+  store.set('sheet_url', savedUrl);
+}
+
+function autoSyncIfPossible(){
+  const url = store.get('sheet_url');
+  if(url && navigator.onLine) syncFromUrl(url, document.getElementById('syncMsg'), true);
 }
 
 /* ---------------- online/offline indicator ---------------- */
@@ -571,13 +589,15 @@ function updateOnlineStatus(){
   if(navigator.onLine){ dot.classList.remove('off'); txt.textContent='온라인'; }
   else{ dot.classList.add('off'); txt.textContent='오프라인 (지도·동기화 제한)'; }
 }
-window.addEventListener('online', updateOnlineStatus);
+window.addEventListener('online', ()=>{ updateOnlineStatus(); autoSyncIfPossible(); });
 window.addEventListener('offline', updateOnlineStatus);
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState === 'visible') autoSyncIfPossible(); });
 updateOnlineStatus();
 
 /* ---------------- init ---------------- */
 renderCalendar();
 renderInfoCards();
+autoSyncIfPossible();
 </script>
 </body>
 </html>
