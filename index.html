@@ -213,7 +213,7 @@
 <body>
 
 <div style="background:#9C4A34; color:#fff; text-align:center; font-size:12px; padding:5px; font-weight:700; letter-spacing:.02em;">
-  빌드 버전: v2.9 (중복행/빈값덮어쓰기 버그 수정) · 2026-08-16
+  빌드 버전: v3.0 (체크인시간 + 교통정보 동기화 점검) · 2026-08-16
 </div>
 
 <div id="topbar">
@@ -320,6 +320,7 @@
         <div class="panel-title">예약 숙소 <span class="saved-tick" id="tickStay">저장됨</span></div>
         <div class="panel-body">
           <div class="field-row"><label>숙소명</label><input id="f-hotelName"></div>
+          <div class="field-row"><label>체크인시간</label><input id="f-checkinTime" placeholder="예: 15:00"></div>
           <div class="field-row"><label>예약번호</label><input id="f-resNumber"></div>
           <div class="field-row"><label>주소</label><input id="f-address"></div>
           <div class="field-row"><label>연락처</label><input id="f-phone"></div>
@@ -662,7 +663,7 @@ function renderDay(){
   document.getElementById('map-fallback').insertAdjacentHTML('beforeend',
     `<div style="margin-top:6px;"><a href="${mapOpenUrlFor(day)}" target="_blank">지도 앱에서 열기 ↗</a></div>`);
 
-  ['transportMode','transportDistance','transportNote','hotelName','resNumber','address','phone','breakfast','cancellation','todo'].forEach(f=>{
+  ['transportMode','transportDistance','transportNote','hotelName','checkinTime','resNumber','address','phone','breakfast','cancellation','todo'].forEach(f=>{
     const el = document.getElementById('f-'+f);
     if(el) el.value = day[f] || '';
   });
@@ -686,7 +687,7 @@ function bindField(fieldId, tickId){
   });
 }
 ['transportMode','transportDistance','transportNote'].forEach(f=>bindField('f-'+f,'tickTransport'));
-['hotelName','resNumber','address','phone','breakfast','cancellation'].forEach(f=>bindField('f-'+f,'tickStay'));
+['hotelName','checkinTime','resNumber','address','phone','breakfast','cancellation'].forEach(f=>bindField('f-'+f,'tickStay'));
 bindField('f-todo','tickTodo');
 
 /* ---------------- CSV/TSV sync (Google Sheets published-to-web, or manual paste) ---------------- */
