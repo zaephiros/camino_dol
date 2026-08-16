@@ -76,6 +76,7 @@
   .cal-cell.camino{ border-left-color:var(--pine); }
   .cal-cell.dolomiti{ border-left-color:var(--stone); }
   .cal-cell.transition{ outline:2px solid var(--shell); }
+  .cal-cell.today{ outline:2px solid var(--pine); box-shadow:0 0 0 3px rgba(27,75,67,.18); }
   .cal-cell .num{ font-size:11.5px; font-weight:700; color:#8a8272; line-height:1.1;}
   .cal-cell .city{ font-size:10px; line-height:1.2; font-weight:600; word-break:keep-all;
     display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; overflow:hidden; margin-top:2px;}
@@ -103,14 +104,31 @@
   }
   /* (구 preview/link 스타일 제거 — 아이콘형 카드로 대체) */
 
-  /* sync box */
+  /* today banner */
+  #today-banner{
+    display:none; align-items:center; gap:8px; background:var(--pine); color:#fff;
+    padding:7px 12px; border-radius:8px; font-size:12.5px; font-weight:700; margin-bottom:8px;
+  }
+  #today-banner .dot2{ width:7px; height:7px; border-radius:50%; background:var(--shell); flex-shrink:0; }
+
+  /* sync box (컴팩트 4줄 구조) */
   #syncbox{ margin-top:16px; background:var(--paper); border-radius:8px; padding:12px; box-shadow:var(--shadow); border:1px solid var(--line);}
-  #syncbox h3{ font-size:13px; margin:0 0 6px; }
-  #syncbox p{ font-size:11.5px; color:#6b6357; margin:2px 0 8px; }
-  #syncbox input{ width:100%; padding:7px 8px; font-size:12px; border:1px solid var(--line); border-radius:6px; margin-bottom:6px;}
+  #syncbox h3{ font-size:13px; margin:0 0 8px; }
+  #syncbox p{ font-size:11px; color:#6b6357; margin:2px 0; }
+  #syncbox input{ flex:1; min-width:0; padding:7px 8px; font-size:12px; border:1px solid var(--line); border-radius:6px; }
   #syncbox .row{ display:flex; gap:6px; }
-  #syncbox button{ background:var(--pine); color:#fff; border:none; padding:8px 12px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer;}
-  #syncbox .msg{ font-size:11px; margin-top:6px; color:var(--stone); }
+  #syncbox button{ background:var(--pine); color:#fff; border:none; padding:8px 12px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; flex-shrink:0;}
+  #syncbox .msg{ font-size:10.5px; margin-top:4px; color:var(--stone); }
+  #syncbox .sync-row{
+    display:flex; align-items:center; gap:6px; background:#fffdf8; border:1px solid var(--line);
+    border-radius:7px; padding:7px 9px; margin-bottom:6px;
+  }
+  #syncbox .sync-row input{ border:none; padding:2px; background:transparent; }
+  #syncbox details.sync-row{ display:block; }
+  #syncbox details.sync-row summary{ font-size:12px; font-weight:600; color:var(--pine); cursor:pointer; list-style:none; }
+  #syncbox details.sync-row summary::-webkit-details-marker{ display:none; }
+  #syncbox details.sync-row summary::before{ content:'▸ '; }
+  #syncbox details.sync-row[open] summary::before{ content:'▾ '; }
 
   /* ---------- day view ---------- */
   #day-view{ display:none; }
@@ -171,7 +189,7 @@
 <body>
 
 <div style="background:#9C4A34; color:#fff; text-align:center; font-size:12px; padding:5px; font-weight:700; letter-spacing:.02em;">
-  빌드 버전: v2.5 (요일 정렬 + 컴팩트 정보칸) · 2026-08-16
+  빌드 버전: v2.6 (오늘 배너 + 동기화 압축) · 2026-08-16
 </div>
 
 <div id="topbar">
@@ -188,6 +206,7 @@
     <span><span class="sw" style="background:var(--pine)"></span>Camino Português (9/8–9/27)</span>
     <span><span class="sw" style="background:var(--stone)"></span>Dolomiti (9/28–10/7)</span>
   </div>
+  <div id="today-banner"></div>
   <div id="months"></div>
 
   <div id="essential">
@@ -196,28 +215,33 @@
   </div>
 
   <div id="syncbox">
-    <h3>구글시트 동기화 (선택)</h3>
-    <p>구글시트를 [파일 &gt; 웹에 게시 &gt; CSV]로 게시한 후 그 링크를 아래에 넣으면, 인터넷이 있을 때 시트 내용으로 일정을 갱신합니다. 컬럼 순서: date, city, route, mapQuery, hotelName, resNumber, address, phone, breakfast, cancellation, transportMode, transportDistance, transportNote, todo</p>
-    <input type="text" id="sheetUrl" placeholder="게시된 CSV 링크 붙여넣기 (https://docs.google.com/...output=csv)">
-    <div class="row">
-      <button id="syncBtn">지금 동기화</button>
+    <h3>구글시트 동기화 <span style="font-weight:400; color:var(--stone); font-size:11px;">(선택)</span></h3>
+
+    <div class="sync-row">
+      <input type="text" id="sheetUrl" placeholder="게시된 CSV 링크">
+      <button id="syncBtn">동기화</button>
     </div>
     <div class="msg" id="syncMsg"></div>
 
-    <p style="margin-top:12px; border-top:1px solid var(--line); padding-top:10px;">
-      링크 동기화가 안 되면(브라우저가 외부 요청을 막는 경우 등), 구글시트에서 데이터 범위를 선택해 복사(Ctrl/Cmd+C)한 뒤 아래에 붙여넣으세요 — 인터넷 연결 없이도 됩니다.
-    </p>
-    <textarea id="pasteArea" placeholder="구글시트에서 복사한 내용을 여기에 붙여넣기 (헤더 행 포함)" style="width:100%; min-height:80px; font-size:12px; padding:7px 8px; border:1px solid var(--line); border-radius:6px; font-family:inherit;"></textarea>
-    <div class="row" style="margin-top:6px;">
-      <button id="pasteSyncBtn">붙여넣은 내용으로 적용</button>
-    </div>
-    <div class="msg" id="pasteMsg"></div>
+    <details class="sync-row">
+      <summary>붙여넣기로 동기화 (인터넷 없이도 가능)</summary>
+      <textarea id="pasteArea" placeholder="구글시트에서 복사한 내용 붙여넣기 (헤더 행 포함)" style="width:100%; min-height:70px; font-size:12px; padding:7px 8px; border:1px solid var(--line); border-radius:6px; font-family:inherit; margin-top:6px;"></textarea>
+      <div class="row" style="margin-top:6px;">
+        <button id="pasteSyncBtn">붙여넣은 내용으로 적용</button>
+      </div>
+      <div class="msg" id="pasteMsg"></div>
+    </details>
 
-    <p style="margin-top:12px; border-top:1px solid var(--line); padding-top:10px;">
-      일자별 화면에서 직접 입력한 메모(숙소정보, 교통정보, 할일)를 다른 기기에도 반영하려면, Apps Script 쓰기용 웹앱 주소를 넣어주세요. 넣어두면 입력할 때마다 자동으로 시트에 저장되고, 다른 기기는 다음에 열 때(또는 자동 동기화 시) 그 내용을 받아옵니다.
-    </p>
-    <input type="text" id="writeUrl" placeholder="Apps Script 웹앱 URL 붙여넣기 (.../exec)">
+    <div class="sync-row">
+      <input type="text" id="writeUrl" placeholder="쓰기용 Apps Script 웹앱 URL (.../exec)">
+    </div>
     <div class="msg" id="writeMsg"></div>
+
+    <details class="sync-row">
+      <summary>도움말</summary>
+      <p style="margin-top:6px;">CSV: 구글시트를 [파일 &gt; 웹에 게시 &gt; CSV]로 게시 후 링크를 넣으면 온라인일 때 자동 갱신됩니다.<br>
+      쓰기용 URL: 일자별 화면에서 입력한 메모를 다른 기기에도 반영하려면 Apps Script 웹앱 주소를 넣어주세요.</p>
+    </details>
   </div>
 </div>
 
@@ -369,6 +393,22 @@ function pushFieldToSheet(date, field, value){
 loadItinerary();
 
 /* ---------------- calendar view (연속 흐름, 월 구분은 뱃지로만 표시) ---------------- */
+function todayISO(){
+  const t = new Date();
+  return `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`;
+}
+
+function renderTodayBanner(){
+  const banner = document.getElementById('today-banner');
+  const t = new Date();
+  const wd = ['일','월','화','수','목','금','토'][t.getDay()];
+  const iso = todayISO();
+  const inTrip = itinerary.some(d=>d.date===iso);
+  banner.style.display = 'flex';
+  banner.innerHTML = `<span class="dot2"></span>오늘 ${t.getMonth()+1}월 ${t.getDate()}일 (${wd})` +
+    (inTrip ? ' · 여정 중' : '');
+}
+
 function renderCalendar(){
   const dowNames = ['일','월','화','수','목','금','토'];
   let html = `<div class="cal-dow-row">` + dowNames.map(w=>`<div class="cal-dow">${w}</div>`).join('') + `</div>`;
@@ -377,13 +417,15 @@ function renderCalendar(){
   const firstDow = new Date(itinerary[0].date+'T00:00:00').getDay(); // 9/8 = 수요일(3)
   for(let i=0;i<firstDow;i++) html += `<div class="cal-cell empty"></div>`;
 
+  const todayStr = todayISO();
   itinerary.forEach(day=>{
     const d = new Date(day.date+'T00:00:00');
     const dnum = d.getDate();
     const isFirstOfMonth = dnum === 1 || day === itinerary[0];
     const isTransition = day.date === "2026-09-28";
+    const isToday = day.date === todayStr;
     const monthBadge = isFirstOfMonth ? `<div class="month-badge">${d.getMonth()+1}월</div>` : '';
-    html += `<div class="cal-cell ${day.phase}${isTransition?' transition':''}" data-date="${day.date}">
+    html += `<div class="cal-cell ${day.phase}${isTransition?' transition':''}${isToday?' today':''}" data-date="${day.date}">
       ${monthBadge}
       <div class="num">${dnum}</div>
       <div class="city">${day.city.length>16 ? day.city.slice(0,15)+'…' : day.city}</div>
@@ -394,6 +436,7 @@ function renderCalendar(){
   document.querySelectorAll('.cal-cell[data-date]').forEach(cell=>{
     cell.addEventListener('click', ()=> openDay(cell.dataset.date));
   });
+  renderTodayBanner();
 }
 
 /* ---------------- essential info cards (아이콘형, 한 줄 5칸) ---------------- */
