@@ -140,9 +140,13 @@
   #diarybox{ margin-top:16px; background:var(--paper); border-radius:8px; padding:12px; box-shadow:var(--shadow); border:1px solid var(--line);}
   #diarybox h3{ font-size:13px; margin:0 0 8px; display:flex; align-items:baseline; gap:6px; }
   #diarybox .diary-date{ font-weight:400; color:var(--stone); font-size:11px; }
-  #diarybox textarea{
-    width:100%; min-height:120px; font-size:13.5px; padding:9px 10px; border:1px solid var(--line);
-    border-radius:7px; font-family:inherit; background:#fffdf8; resize:vertical; line-height:1.5;
+  .diary-cols{ display:flex; gap:8px; }
+  .diary-col{ flex:1; min-width:0; }
+  .diary-col-label{ font-size:11px; font-weight:700; color:var(--pine); margin-bottom:4px; }
+  .diary-col:nth-child(2) .diary-col-label{ color:var(--stone); }
+  .diary-col textarea{
+    width:100%; min-height:140px; font-size:12.5px; padding:8px 9px; border:1px solid var(--line);
+    border-radius:7px; font-family:inherit; background:#fffdf8; resize:vertical; line-height:1.45;
   }
   #diarybox .msg{ font-size:10.5px; margin-top:5px; color:var(--stone); }
 
@@ -188,6 +192,17 @@
     font-family:inherit; background:#fffdf8;
   }
 
+  #route-links{ margin-bottom:10px; }
+  #route-links .route-label{ font-size:11px; color:var(--stone); margin-bottom:5px; line-height:1.4; }
+  #route-links .route-modes{ display:flex; gap:6px; flex-wrap:wrap; }
+  #route-links .route-modes a{
+    flex:1; min-width:72px; text-align:center; text-decoration:none; font-size:11.5px; font-weight:700;
+    padding:8px 6px; border-radius:7px; background:var(--pine); color:#fff;
+  }
+  #route-links .route-modes a.alt{ background:var(--stone); }
+  #route-links .route-none{ font-size:11px; color:#8a8272; font-style:italic; }
+  #route-links .route-auto{ font-size:11px; color:var(--pine); font-weight:600; margin-top:6px; }
+
   #todo-panel textarea{ width:100%; min-height:110px; border:none; resize:vertical; font-size:14px; padding:0; background:transparent; font-family:inherit; }
 
   .saved-tick{ font-size:10px; color:#3a7a52; opacity:0; transition:opacity .3s; }
@@ -213,7 +228,7 @@
 <body>
 
 <div style="background:#9C4A34; color:#fff; text-align:center; font-size:12px; padding:5px; font-weight:700; letter-spacing:.02em;">
-  빌드 버전: v3.0 (체크인시간 + 교통정보 동기화 점검) · 2026-08-16
+  빌드 버전: v3.3 (자동거리계산 + 다이어리 2인분할) · 2026-08-16
 </div>
 
 <div id="topbar">
@@ -240,7 +255,16 @@
 
   <div id="diarybox">
     <h3>오늘의 다이어리 <span class="diary-date" id="diaryDate"></span></h3>
-    <textarea id="diaryText" placeholder="오늘 있었던 일, 느낀 점을 자유롭게 적어보세요…"></textarea>
+    <div class="diary-cols">
+      <div class="diary-col">
+        <div class="diary-col-label">나</div>
+        <textarea id="diaryTextMe" placeholder="오늘 있었던 일, 느낀 점을…"></textarea>
+      </div>
+      <div class="diary-col">
+        <div class="diary-col-label">배우자</div>
+        <textarea id="diaryTextPartner" placeholder="오늘 있었던 일, 느낀 점을…"></textarea>
+      </div>
+    </div>
     <div class="msg" id="diaryMsg"></div>
   </div>
 </div>
@@ -308,9 +332,11 @@
       <div class="panel" id="transport-panel">
         <div class="panel-title">교통 정보 <span class="saved-tick" id="tickTransport">저장됨</span></div>
         <div class="panel-body">
+          <div id="route-links"></div>
           <div class="field-row"><label>이동수단</label><input id="f-transportMode" placeholder="도보 / 렌터카 / 기차 등"></div>
           <div class="field-row"><label>거리</label><input id="f-transportDistance" placeholder="예: 22.4km"></div>
           <div class="field-row"><label>메모</label><input id="f-transportNote" placeholder="고도차, 유의사항 등"></div>
+          <div class="field-row"><label>지도검색어</label><input id="f-mapQueryOverride" placeholder="지도 핀이 안 맞으면 직접 입력 (숙소명, 정확한 주소 등)"></div>
         </div>
       </div>
     </div>
@@ -434,24 +460,31 @@ function pushFieldToSheet(sheetName, date, field, value){
   }).catch(()=>{ /* 실패해도 로컬 저장은 이미 됐으니 조용히 무시 */ });
 }
 
-/* ---------------- 오늘의 다이어리 ---------------- */
-let diarySaveTimer = null;
+/* ---------------- 오늘의 다이어리 (나 / 배우자, 두 칸) ---------------- */
+const DIARY_PEOPLE = [
+  { person: 'me', boxId: 'diaryTextMe', field: 'memo_me' },
+  { person: 'partner', boxId: 'diaryTextPartner', field: 'memo_partner' }
+];
+const diarySaveTimers = {};
+
 function initDiaryBox(){
   const iso = todayISO();
   const t = new Date();
   document.getElementById('diaryDate').textContent = `${t.getMonth()+1}월 ${t.getDate()}일`;
-  const box = document.getElementById('diaryText');
-  box.value = store.get('diary_'+iso) || '';
 
-  box.addEventListener('input', ()=>{
-    store.set('diary_'+iso, box.value);
-    const msg = document.getElementById('diaryMsg');
-    msg.textContent = '저장 중...';
-    clearTimeout(diarySaveTimer);
-    diarySaveTimer = setTimeout(()=>{
-      pushFieldToSheet('diary', iso, 'memo', box.value);
-      msg.textContent = '저장됨 — ' + new Date().toLocaleTimeString('ko-KR');
-    }, 800); // 타이핑 멈춘 뒤 0.8초 후 저장 (매 글자마다 전송하지 않도록)
+  DIARY_PEOPLE.forEach(p=>{
+    const box = document.getElementById(p.boxId);
+    box.value = store.get('diary_'+p.person+'_'+iso) || '';
+    box.addEventListener('input', ()=>{
+      store.set('diary_'+p.person+'_'+iso, box.value);
+      const msg = document.getElementById('diaryMsg');
+      msg.textContent = '저장 중...';
+      clearTimeout(diarySaveTimers[p.person]);
+      diarySaveTimers[p.person] = setTimeout(()=>{
+        pushFieldToSheet('diary', iso, p.field, box.value);
+        msg.textContent = '저장됨 — ' + new Date().toLocaleTimeString('ko-KR');
+      }, 800); // 타이핑 멈춘 뒤 0.8초 후 저장 (매 글자마다 전송하지 않도록)
+    });
   });
 }
 
@@ -463,14 +496,20 @@ function pullDiaryFromSheet(){
     .then(data => {
       if(!data || !data.ok || !Array.isArray(data.rows)) return;
       const iso = todayISO();
-      const box = document.getElementById('diaryText');
       data.rows.forEach(r=>{
-        if(r.date) store.set('diary_'+String(r.date).trim(), r.memo || '');
+        if(!r.date) return;
+        const dateKey = String(r.date).trim();
+        DIARY_PEOPLE.forEach(p=>{
+          if(r[p.field] !== undefined) store.set('diary_'+p.person+'_'+dateKey, r[p.field] || '');
+        });
       });
       // 다른 기기에서 방금 쓴 내용이 있으면 오늘 칸에 반영 (단, 지금 타이핑 중이면 덮어쓰지 않음)
-      if(document.activeElement !== box){
-        box.value = store.get('diary_'+iso) || '';
-      }
+      DIARY_PEOPLE.forEach(p=>{
+        const box = document.getElementById(p.boxId);
+        if(document.activeElement !== box){
+          box.value = store.get('diary_'+p.person+'_'+iso) || '';
+        }
+      });
     })
     .catch(()=>{});
 }
@@ -615,16 +654,105 @@ document.getElementById('toCalendarBtn2').addEventListener('click', closeSetting
 /* ---------------- day view ---------------- */
 let currentIndex = 0;
 
+function mapQueryFor(day){
+  // 우선순위: 사람이 직접 고정해둔 검색어 > 숙소명+실제주소(정확) > 도시명(대략적, 예약정보 없을 때만)
+  if(day.mapQueryOverride) return day.mapQueryOverride;
+  if(day.address) return [day.hotelName, day.address].filter(Boolean).join(', ');
+  return day.mapQuery || '';
+}
 function mapUrlFor(day){
   // no API key needed for a simple place search embed; directions embed (saddr/daddr) is best-effort.
-  if(day.route && day.route.includes('→') && day.mapQuery){
-    return `https://www.google.com/maps?q=${encodeURIComponent(day.mapQuery)}&output=embed`;
-  }
-  if(day.mapQuery) return `https://www.google.com/maps?q=${encodeURIComponent(day.mapQuery)}&output=embed`;
-  return '';
+  const q = mapQueryFor(day);
+  return q ? `https://www.google.com/maps?q=${encodeURIComponent(q)}&output=embed` : '';
 }
 function mapOpenUrlFor(day){
-  return day.mapQuery ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(day.mapQuery)}` : '#';
+  const q = mapQueryFor(day);
+  return q ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}` : '#';
+}
+
+/* ---------------- 무료 거리 자동 계산 (OpenStreetMap Nominatim 지오코딩 + OSRM 경로) ----------------
+   구글 Distance Matrix는 API 키+결제가 필요해서 못 쓰지만, 이 방식은 키 없이 무료로 자동차 기준
+   거리/시간을 계산해준다. 완전히 구글맵과 똑같진 않지만 상당히 정확하다. 주소별로 캐시해서
+   같은 주소를 반복 조회하지 않는다. */
+async function geocodeAddress(query){
+  const cacheKey = 'geocode_' + query;
+  const cached = store.get(cacheKey);
+  if(cached){ try{ return JSON.parse(cached); }catch(e){} }
+  try{
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(query)}`);
+    const data = await res.json();
+    if(!data || !data.length) return null;
+    const point = { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
+    store.set(cacheKey, JSON.stringify(point));
+    return point;
+  }catch(e){ return null; }
+}
+
+async function fetchDrivingDistance(origin, destination){
+  const routeCacheKey = 'route_' + origin + '|' + destination;
+  const cached = store.get(routeCacheKey);
+  if(cached){ try{ return JSON.parse(cached); }catch(e){} }
+  const [p1, p2] = await Promise.all([geocodeAddress(origin), geocodeAddress(destination)]);
+  if(!p1 || !p2) return null;
+  try{
+    const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${p1.lon},${p1.lat};${p2.lon},${p2.lat}?overview=false`);
+    const data = await res.json();
+    if(!data || !data.routes || !data.routes.length) return null;
+    const result = { km: data.routes[0].distance/1000, min: data.routes[0].duration/60 };
+    store.set(routeCacheKey, JSON.stringify(result));
+    return result;
+  }catch(e){ return null; }
+}
+
+/* 오늘 체크아웃하는 숙소(=어제 묵은 곳) -> 오늘 체크인하는 숙소 사이 이동 경로/거리.
+   자동차 기준 거리·시간은 무료 API로 자동 계산해서 채워주고(비어있을 때만, 직접 입력한 값은
+   덮어쓰지 않음), 도보/대중교통 등 정확한 다른 모드는 구글맵 링크로 확인하도록 안내한다. */
+function renderRouteLinks(day){
+  const box = document.getElementById('route-links');
+  const idx = itinerary.indexOf(day);
+  const prevDay = idx > 0 ? itinerary[idx - 1] : null;
+
+  const origin = prevDay ? mapQueryFor(prevDay) : '';
+  const destination = mapQueryFor(day);
+
+  if(!origin || !destination || origin === destination){
+    box.innerHTML = `<div class="route-none">${!prevDay ? '첫날이라 이전 숙소 정보가 없습니다.' : '어제와 같은 숙소에 머무는 날입니다.'}</div>`;
+    return;
+  }
+
+  const originLabel = (prevDay.hotelName || prevDay.city || '어제 숙소');
+  const destLabel = (day.hotelName || day.city || '오늘 숙소');
+  const modes = [
+    {key:'walking', label:'🚶 도보'},
+    {key:'driving', label:'🚗 자동차'},
+    {key:'transit', label:'🚌 대중교통'}
+  ];
+  const linksHtml = modes.map((m,i)=>{
+    const url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&travelmode=${m.key}`;
+    return `<a href="${url}" target="_blank" class="${i>0?'alt':''}">${m.label}</a>`;
+  }).join('');
+
+  box.innerHTML = `
+    <div class="route-label">📍 ${originLabel} → ${destLabel} — 탭하면 구글맵에서 정확한 거리·시간 확인</div>
+    <div class="route-modes">${linksHtml}</div>
+    <div class="route-auto" id="routeAutoDistance">거리 자동 계산 중...</div>
+  `;
+
+  const thisRenderDate = day.date; // 비동기 응답이 늦게 와서 다른 날짜 화면에 잘못 반영되는 것 방지
+  fetchDrivingDistance(origin, destination).then(result=>{
+    const autoEl = document.getElementById('routeAutoDistance');
+    if(!autoEl || itinerary[currentIndex].date !== thisRenderDate) return; // 이미 다른 날짜로 넘어갔으면 무시
+    if(!result){ autoEl.textContent = '자동 거리 계산 실패 (인터넷 상태 확인, 또는 위 버튼으로 직접 확인)'; return; }
+    const kmText = result.km.toFixed(1) + 'km';
+    const minText = Math.round(result.min) + '분';
+    autoEl.textContent = `자동차 기준 자동 계산: 약 ${kmText} · ${minText}`;
+
+    const distInput = document.getElementById('f-transportDistance');
+    if(distInput && !distInput.value.trim()){
+      distInput.value = `${kmText} (자동차, 자동계산)`;
+      saveDayField(day.date, 'transportDistance', distInput.value);
+    }
+  });
 }
 
 function openDay(dateStr){
@@ -663,7 +791,9 @@ function renderDay(){
   document.getElementById('map-fallback').insertAdjacentHTML('beforeend',
     `<div style="margin-top:6px;"><a href="${mapOpenUrlFor(day)}" target="_blank">지도 앱에서 열기 ↗</a></div>`);
 
-  ['transportMode','transportDistance','transportNote','hotelName','checkinTime','resNumber','address','phone','breakfast','cancellation','todo'].forEach(f=>{
+  renderRouteLinks(day);
+
+  ['transportMode','transportDistance','transportNote','mapQueryOverride','hotelName','checkinTime','resNumber','address','phone','breakfast','cancellation','todo'].forEach(f=>{
     const el = document.getElementById('f-'+f);
     if(el) el.value = day[f] || '';
   });
@@ -675,7 +805,7 @@ function renderDay(){
 document.getElementById('prevDay').addEventListener('click', ()=>{ if(currentIndex>0){currentIndex--; renderDay();}});
 document.getElementById('nextDay').addEventListener('click', ()=>{ if(currentIndex<itinerary.length-1){currentIndex++; renderDay();}});
 
-function bindField(fieldId, tickId){
+function bindField(fieldId, tickId, refreshesMap){
   const el = document.getElementById(fieldId);
   el.addEventListener('change', ()=>{
     const field = fieldId.replace('f-','');
@@ -684,10 +814,13 @@ function bindField(fieldId, tickId){
     tick.classList.add('show');
     setTimeout(()=>tick.classList.remove('show'), 1200);
     renderCalendar(); // reflect city-name style edits if that field affects display
+    if(refreshesMap) renderDay(); // 주소/검색어가 바뀌었으니 지도도 다시 그림
   });
 }
 ['transportMode','transportDistance','transportNote'].forEach(f=>bindField('f-'+f,'tickTransport'));
-['hotelName','checkinTime','resNumber','address','phone','breakfast','cancellation'].forEach(f=>bindField('f-'+f,'tickStay'));
+bindField('f-mapQueryOverride','tickTransport', true);
+['hotelName','checkinTime','resNumber','phone','breakfast','cancellation'].forEach(f=>bindField('f-'+f,'tickStay'));
+bindField('f-address','tickStay', true);
 bindField('f-todo','tickTodo');
 
 /* ---------------- CSV/TSV sync (Google Sheets published-to-web, or manual paste) ---------------- */
