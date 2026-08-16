@@ -58,25 +58,27 @@
     position:absolute; top:2px; left:3px; font-size:8.5px; font-weight:800; color:var(--brick);
     background:rgba(255,255,255,.85); padding:0 3px; border-radius:3px; letter-spacing:.02em; z-index:2;
   }
+  .cal-dow-row{ display:grid; grid-template-columns:repeat(7,1fr); gap:3px; margin-bottom:4px; }
+  .cal-dow{ text-align:center; font-size:11px; font-weight:700; color:#8a8272; }
   .cal-grid{
     display:grid; grid-template-columns:repeat(7,1fr); gap:3px;
-    grid-auto-rows: 1fr;
   }
   .cal-cell{
     position:relative;
-    background:var(--paper); border-radius:6px; padding:3px 3px 2px;
+    background:var(--paper); border-radius:6px; padding:4px 3px 2px;
     border-left:3px solid transparent; cursor:pointer; box-shadow:var(--shadow);
     display:flex; flex-direction:column; justify-content:flex-start;
     transition:transform .1s; overflow:hidden;
-    aspect-ratio: 1 / 0.82;
+    aspect-ratio: 1 / 1.25;
   }
+  .cal-cell.empty{ visibility:hidden; box-shadow:none; cursor:default; }
   .cal-cell:active{ transform:scale(.96); }
   .cal-cell.camino{ border-left-color:var(--pine); }
   .cal-cell.dolomiti{ border-left-color:var(--stone); }
   .cal-cell.transition{ outline:2px solid var(--shell); }
-  .cal-cell .num{ font-size:10.5px; font-weight:700; color:#8a8272; line-height:1.1;}
-  .cal-cell .city{ font-size:9.5px; line-height:1.15; font-weight:600; word-break:keep-all;
-    display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; margin-top:1px;}
+  .cal-cell .num{ font-size:11.5px; font-weight:700; color:#8a8272; line-height:1.1;}
+  .cal-cell .city{ font-size:10px; line-height:1.2; font-weight:600; word-break:keep-all;
+    display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; overflow:hidden; margin-top:2px;}
 
   /* essential info */
   #essential{ margin-top:10px; }
@@ -87,14 +89,19 @@
     cursor:pointer; flex-shrink:0;
   }
   #essential h2 .sheet-link svg{ width:13px; height:13px; }
-  .info-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:8px; }
+  .info-grid{ display:grid; grid-template-columns:repeat(5,1fr); gap:4px; }
+  .info-card{
+    background:var(--paper); border-radius:8px; padding:8px 3px 6px; box-shadow:var(--shadow);
+    cursor:pointer; border:1px solid var(--line); text-align:center;
+  }
+  .info-card .icon{ font-size:17px; line-height:1; margin-bottom:3px; }
+  .info-card .label{ font-size:9px; color:var(--stone); font-weight:700; letter-spacing:.01em; line-height:1.15; }
+  .info-card.filled{ border-color:var(--pine); }
   .info-card{
     background:var(--paper); border-radius:8px; padding:10px 12px; box-shadow:var(--shadow);
     cursor:pointer; border:1px solid var(--line);
   }
-  .info-card .label{ font-size:11px; color:var(--stone); font-weight:700; letter-spacing:.02em; }
-  .info-card .preview{ font-size:12.5px; margin-top:4px; color:#4a453d; min-height:32px; white-space:pre-line; }
-  .info-card .link{ font-size:11px; color:var(--brick); margin-top:6px; font-weight:600; }
+  /* (구 preview/link 스타일 제거 — 아이콘형 카드로 대체) */
 
   /* sync box */
   #syncbox{ margin-top:16px; background:var(--paper); border-radius:8px; padding:12px; box-shadow:var(--shadow); border:1px solid var(--line);}
@@ -164,7 +171,7 @@
 <body>
 
 <div style="background:#9C4A34; color:#fff; text-align:center; font-size:12px; padding:5px; font-weight:700; letter-spacing:.02em;">
-  빌드 버전: v2.3 (캘린더 압축 + 시트 링크) · 2026-08-16
+  빌드 버전: v2.5 (요일 정렬 + 컴팩트 정보칸) · 2026-08-16
 </div>
 
 <div id="topbar">
@@ -205,6 +212,12 @@
       <button id="pasteSyncBtn">붙여넣은 내용으로 적용</button>
     </div>
     <div class="msg" id="pasteMsg"></div>
+
+    <p style="margin-top:12px; border-top:1px solid var(--line); padding-top:10px;">
+      일자별 화면에서 직접 입력한 메모(숙소정보, 교통정보, 할일)를 다른 기기에도 반영하려면, Apps Script 쓰기용 웹앱 주소를 넣어주세요. 넣어두면 입력할 때마다 자동으로 시트에 저장되고, 다른 기기는 다음에 열 때(또는 자동 동기화 시) 그 내용을 받아옵니다.
+    </p>
+    <input type="text" id="writeUrl" placeholder="Apps Script 웹앱 URL 붙여넣기 (.../exec)">
+    <div class="msg" id="writeMsg"></div>
   </div>
 </div>
 
@@ -340,12 +353,30 @@ function saveDayField(date, field, value){
   store.set('itinerary_overrides', JSON.stringify(overrides));
   const day = itinerary.find(d=>d.date===date);
   if(day) day[field] = value;
+  pushFieldToSheet(date, field, value);
+}
+
+function pushFieldToSheet(date, field, value){
+  const url = store.get('write_url');
+  if(!url || !navigator.onLine) return;
+  // text/plain 로 보내면 브라우저가 preflight(OPTIONS) 요청을 안 보내서 Apps Script와 궁합이 좋다
+  fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ date, field, value })
+  }).catch(()=>{ /* 실패해도 로컬 저장은 이미 됐으니 조용히 무시 */ });
 }
 loadItinerary();
 
 /* ---------------- calendar view (연속 흐름, 월 구분은 뱃지로만 표시) ---------------- */
 function renderCalendar(){
-  let html = `<div class="cal-grid">`;
+  const dowNames = ['일','월','화','수','목','금','토'];
+  let html = `<div class="cal-dow-row">` + dowNames.map(w=>`<div class="cal-dow">${w}</div>`).join('') + `</div>`;
+  html += `<div class="cal-grid">`;
+
+  const firstDow = new Date(itinerary[0].date+'T00:00:00').getDay(); // 9/8 = 수요일(3)
+  for(let i=0;i<firstDow;i++) html += `<div class="cal-cell empty"></div>`;
+
   itinerary.forEach(day=>{
     const d = new Date(day.date+'T00:00:00');
     const dnum = d.getDate();
@@ -365,23 +396,21 @@ function renderCalendar(){
   });
 }
 
-/* ---------------- essential info cards ---------------- */
+/* ---------------- essential info cards (아이콘형, 한 줄 5칸) ---------------- */
 const infoDefs = [
-  {key:'roaming', label:'로밍 폰 정보', hint:'통신사 / 요금제 / 임대폰 번호 등'},
-  {key:'usage', label:'사용 일자', hint:'로밍·렌터카 등 사용 기간'},
-  {key:'passport', label:'여권 정보', hint:'여권번호 / 만료일 (민감정보 주의)'},
-  {key:'idp', label:'국제운전면허', hint:'발급일 / 유효기간'},
-  {key:'etc', label:'기타 필수정보', hint:'긴급연락처, 보험 등'}
+  {key:'roaming', label:'로밍폰', icon:'📱', hint:'통신사 / 요금제 / 임대폰 번호 등'},
+  {key:'usage', label:'사용일자', icon:'📅', hint:'로밍·렌터카 등 사용 기간'},
+  {key:'passport', label:'여권', icon:'🛂', hint:'여권번호 / 만료일 (민감정보 주의)'},
+  {key:'idp', label:'국제면허', icon:'🚗', hint:'발급일 / 유효기간'},
+  {key:'etc', label:'기타', icon:'ℹ️', hint:'긴급연락처, 보험 등'}
 ];
 function renderInfoCards(){
   const grid = document.getElementById('info-grid');
   grid.innerHTML = infoDefs.map(def=>{
-    const val = store.get('info_'+def.key) || '';
-    const preview = val ? (val.length>60? val.slice(0,58)+'…' : val) : def.hint;
-    return `<div class="info-card" data-key="${def.key}" data-label="${def.label}">
+    const filled = !!store.get('info_'+def.key);
+    return `<div class="info-card${filled?' filled':''}" data-key="${def.key}" data-label="${def.label}">
+      <div class="icon">${def.icon}</div>
       <div class="label">${def.label}</div>
-      <div class="preview">${preview}</div>
-      <div class="link">상세보기 / 수정 →</div>
     </div>`;
   }).join('');
   grid.querySelectorAll('.info-card').forEach(c=>{
@@ -588,6 +617,15 @@ const DEFAULT_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRus9
   const savedUrl = store.get('sheet_url') || DEFAULT_SHEET_URL;
   document.getElementById('sheetUrl').value = savedUrl;
   store.set('sheet_url', savedUrl);
+}
+{
+  const savedWriteUrl = store.get('write_url') || '';
+  const writeInput = document.getElementById('writeUrl');
+  writeInput.value = savedWriteUrl;
+  writeInput.addEventListener('change', ()=>{
+    store.set('write_url', writeInput.value.trim());
+    document.getElementById('writeMsg').textContent = '저장됨 — 이제부터 입력하는 메모가 시트에 자동으로 올라갑니다.';
+  });
 }
 
 function autoSyncIfPossible(){
