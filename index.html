@@ -213,7 +213,7 @@
 <body>
 
 <div style="background:#9C4A34; color:#fff; text-align:center; font-size:12px; padding:5px; font-weight:700; letter-spacing:.02em;">
-  빌드 버전: v2.7 (다이어리 + 동기화 설정 분리) · 2026-08-16
+  빌드 버전: v2.8 (할일도 즉시 동기화) · 2026-08-16
 </div>
 
 <div id="topbar">
@@ -470,6 +470,35 @@ function pullDiaryFromSheet(){
       if(document.activeElement !== box){
         box.value = store.get('diary_'+iso) || '';
       }
+    })
+    .catch(()=>{});
+}
+
+/* 일자별 화면(할일/교통정보/숙소정보 등)도 다이어리처럼 웹앱을 통해 직접 가져온다
+   (구글 "웹에 게시" CSV는 몇 분 지연이 있어서, 이 경로가 훨씬 빠르다) */
+function pullAppSyncOverridesFromSheet(){
+  const url = store.get('write_url');
+  if(!url || !navigator.onLine) return;
+  fetch(url + (url.includes('?') ? '&' : '?') + 'sheet=app_sync')
+    .then(res => res.json())
+    .then(data => {
+      if(!data || !data.ok || !Array.isArray(data.rows) || !data.rows.length) return;
+      const raw = store.get('itinerary_overrides');
+      const overrides = raw ? JSON.parse(raw) : {};
+      data.rows.forEach(r=>{
+        const date = String(r.date || '').trim();
+        if(!date) return;
+        const clean = {};
+        Object.keys(r).forEach(k=>{ if(k!=='date' && r[k] !== '' && r[k] != null) clean[k] = r[k]; });
+        overrides[date] = Object.assign({}, overrides[date] || {}, clean);
+      });
+      store.set('itinerary_overrides', JSON.stringify(overrides));
+      loadItinerary();
+      renderCalendar();
+      // 지금 일자별 화면을 보고 있고, 입력 중인 칸이 없을 때만 새로고침 (타이핑 방해 방지)
+      const dayViewOpen = document.getElementById('day-view').style.display === 'block';
+      const typingField = document.activeElement && document.activeElement.tagName === 'INPUT' && document.activeElement.closest('#day-body');
+      if(dayViewOpen && !typingField) renderDay();
     })
     .catch(()=>{});
 }
@@ -774,6 +803,7 @@ function autoSyncIfPossible(){
   const url = store.get('sheet_url');
   if(url && navigator.onLine) syncFromUrl(url, document.getElementById('syncMsg'), true);
   pullDiaryFromSheet();
+  pullAppSyncOverridesFromSheet();
 }
 
 /* ---------------- online/offline indicator ---------------- */
