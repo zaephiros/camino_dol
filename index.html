@@ -231,7 +231,7 @@
 <body>
 
 <div style="background:#9C4A34; color:#fff; text-align:center; font-size:12px; padding:5px; font-weight:700; letter-spacing:.02em;">
-  빌드 버전: v3.4 (동기화 실패 표시 + 정보칸 미리보기 복구) · 2026-08-16
+  빌드 버전: v3.5 (설정 화면 나갈 때 재동기화) · 2026-08-16
 </div>
 
 <div id="topbar">
@@ -668,6 +668,7 @@ function openSettingsView(){
 function closeSettingsView(){
   document.getElementById('settings-view').style.display='none';
   document.getElementById('calendar-view').style.display='block';
+  autoSyncIfPossible(); // 설정을 방금 바꿨을 수 있으니 돌아갈 때 바로 다시 동기화
 }
 document.getElementById('toCalendarBtn2').addEventListener('click', closeSettingsView);
 
