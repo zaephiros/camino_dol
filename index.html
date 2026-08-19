@@ -236,7 +236,7 @@
 <body>
 
 <div style="background:#9C4A34; color:#fff; text-align:center; font-size:12px; padding:5px; font-weight:700; letter-spacing:.02em;">
-  빌드 버전: v3.7 (필수정보 세부 입력칸 복구) · 2026-08-19
+  빌드 버전: v3.8 (필수정보 비고칸 추가) · 2026-08-19
 </div>
 
 <div id="topbar">
@@ -265,11 +265,11 @@
     <h3>오늘의 다이어리 <span class="diary-date" id="diaryDate"></span></h3>
     <div class="diary-cols">
       <div class="diary-col">
-        <div class="diary-col-label">김주섭</div>
+        <div class="diary-col-label">나</div>
         <textarea id="diaryTextMe" placeholder="오늘 있었던 일, 느낀 점을…"></textarea>
       </div>
       <div class="diary-col">
-        <div class="diary-col-label">최진숙</div>
+        <div class="diary-col-label">배우자</div>
         <textarea id="diaryTextPartner" placeholder="오늘 있었던 일, 느낀 점을…"></textarea>
       </div>
     </div>
@@ -619,20 +619,30 @@ const infoDefs = [
   {key:'roaming', label:'로밍폰', icon:'📱', fields:[
     {key:'carrier', label:'통신사', placeholder:'예: SKT 로밍'},
     {key:'plan', label:'요금제', placeholder:'예: 일 9,900원'},
-    {key:'number', label:'번호', placeholder:'로밍/임대폰 번호'}
+    {key:'number', label:'번호', placeholder:'로밍/임대폰 번호'},
+    {key:'note1', label:'비고1', placeholder:''},
+    {key:'note2', label:'비고2', placeholder:''}
   ]},
   {key:'usage', label:'사용일자', icon:'📅', fields:[
     {key:'start', label:'시작일', placeholder:'예: 9/8'},
-    {key:'end', label:'종료일', placeholder:'예: 10/7'}
+    {key:'end', label:'종료일', placeholder:'예: 10/7'},
+    {key:'note1', label:'비고1', placeholder:''},
+    {key:'note2', label:'비고2', placeholder:''},
+    {key:'note3', label:'비고3', placeholder:''}
   ]},
   {key:'passport', label:'여권', icon:'🛂', fields:[
     {key:'name', label:'이름', placeholder:'여권상 영문 이름'},
     {key:'number', label:'여권번호', placeholder:''},
-    {key:'expiry', label:'유효기간', placeholder:'만료일'}
+    {key:'expiry', label:'유효기간', placeholder:'만료일'},
+    {key:'note1', label:'비고1', placeholder:''},
+    {key:'note2', label:'비고2', placeholder:''}
   ]},
   {key:'idp', label:'국제면허', icon:'🚗', fields:[
     {key:'issued', label:'발급일', placeholder:''},
-    {key:'expiry', label:'유효기간', placeholder:''}
+    {key:'expiry', label:'유효기간', placeholder:''},
+    {key:'note1', label:'비고1', placeholder:''},
+    {key:'note2', label:'비고2', placeholder:''},
+    {key:'note3', label:'비고3', placeholder:''}
   ]},
   {key:'etc', label:'기타', icon:'ℹ️', hint:'긴급연락처, 보험 등'},
   {key:'sync_settings', label:'동기화', icon:'⚙️', type:'link'}
