@@ -216,6 +216,11 @@
   #modal{ background:var(--paper); border-radius:12px; padding:18px; width:100%; max-width:420px; box-shadow:0 10px 30px rgba(0,0,0,.3);}
   #modal h3{ margin:0 0 8px; font-size:15px; }
   #modal textarea{ width:100%; height:140px; font-size:13px; padding:8px; border:1px solid var(--line); border-radius:6px; font-family:inherit; resize:vertical;}
+  #modalFields .mf-row{ display:flex; gap:8px; margin-bottom:8px; align-items:center; }
+  #modalFields .mf-row label{ font-size:11.5px; color:var(--stone); width:74px; flex-shrink:0; }
+  #modalFields .mf-row input{
+    flex:1; min-width:0; font-size:13px; padding:8px; border:1px solid var(--line); border-radius:6px; font-family:inherit;
+  }
   #modal .modal-actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:10px; }
   #modal button{ padding:7px 14px; border-radius:6px; border:none; font-size:12.5px; font-weight:600; cursor:pointer;}
   #modal .save{ background:var(--pine); color:#fff; }
@@ -231,7 +236,7 @@
 <body>
 
 <div style="background:#9C4A34; color:#fff; text-align:center; font-size:12px; padding:5px; font-weight:700; letter-spacing:.02em;">
-  빌드 버전: v3.5 (설정 화면 나갈 때 재동기화) · 2026-08-16
+  빌드 버전: v3.7 (필수정보 세부 입력칸 복구) · 2026-08-19
 </div>
 
 <div id="topbar">
@@ -260,11 +265,11 @@
     <h3>오늘의 다이어리 <span class="diary-date" id="diaryDate"></span></h3>
     <div class="diary-cols">
       <div class="diary-col">
-        <div class="diary-col-label">나</div>
+        <div class="diary-col-label">김주섭</div>
         <textarea id="diaryTextMe" placeholder="오늘 있었던 일, 느낀 점을…"></textarea>
       </div>
       <div class="diary-col">
-        <div class="diary-col-label">배우자</div>
+        <div class="diary-col-label">최진숙</div>
         <textarea id="diaryTextPartner" placeholder="오늘 있었던 일, 느낀 점을…"></textarea>
       </div>
     </div>
@@ -370,6 +375,7 @@
 <div id="modal-bg">
   <div id="modal">
     <h3 id="modalTitle"></h3>
+    <div id="modalFields"></div>
     <textarea id="modalText"></textarea>
     <div class="modal-actions">
       <button class="close" id="modalClose">닫기</button>
@@ -610,19 +616,46 @@ function renderCalendar(){
 
 /* ---------------- essential info cards (아이콘형, 한 줄 5칸) ---------------- */
 const infoDefs = [
-  {key:'roaming', label:'로밍폰', icon:'📱', hint:'통신사 / 요금제 / 임대폰 번호 등'},
-  {key:'usage', label:'사용일자', icon:'📅', hint:'로밍·렌터카 등 사용 기간'},
-  {key:'passport', label:'여권', icon:'🛂', hint:'여권번호 / 만료일 (민감정보 주의)'},
-  {key:'idp', label:'국제면허', icon:'🚗', hint:'발급일 / 유효기간'},
+  {key:'roaming', label:'로밍폰', icon:'📱', fields:[
+    {key:'carrier', label:'통신사', placeholder:'예: SKT 로밍'},
+    {key:'plan', label:'요금제', placeholder:'예: 일 9,900원'},
+    {key:'number', label:'번호', placeholder:'로밍/임대폰 번호'}
+  ]},
+  {key:'usage', label:'사용일자', icon:'📅', fields:[
+    {key:'start', label:'시작일', placeholder:'예: 9/8'},
+    {key:'end', label:'종료일', placeholder:'예: 10/7'}
+  ]},
+  {key:'passport', label:'여권', icon:'🛂', fields:[
+    {key:'name', label:'이름', placeholder:'여권상 영문 이름'},
+    {key:'number', label:'여권번호', placeholder:''},
+    {key:'expiry', label:'유효기간', placeholder:'만료일'}
+  ]},
+  {key:'idp', label:'국제면허', icon:'🚗', fields:[
+    {key:'issued', label:'발급일', placeholder:''},
+    {key:'expiry', label:'유효기간', placeholder:''}
+  ]},
   {key:'etc', label:'기타', icon:'ℹ️', hint:'긴급연락처, 보험 등'},
   {key:'sync_settings', label:'동기화', icon:'⚙️', type:'link'}
 ];
+
+function infoPreviewText(def, raw){
+  if(!raw) return '';
+  if(def.fields){
+    try{
+      const obj = JSON.parse(raw);
+      const firstFilled = def.fields.map(f=>obj[f.key]).find(v=>v);
+      return firstFilled ? (firstFilled.length>12 ? firstFilled.slice(0,11)+'…' : firstFilled) : '';
+    }catch(e){ return ''; }
+  }
+  return raw.length>14 ? raw.slice(0,13)+'…' : raw;
+}
+
 function renderInfoCards(){
   const grid = document.getElementById('info-grid');
   grid.innerHTML = infoDefs.map(def=>{
     const val = def.type!=='link' ? (store.get('info_'+def.key) || '') : '';
     const filled = !!val;
-    const previewText = val ? (val.length>14 ? val.slice(0,13)+'…' : val) : (def.hint ? '' : '');
+    const previewText = infoPreviewText(def, val);
     return `<div class="info-card${filled?' filled':''}" data-key="${def.key}" data-label="${def.label}" data-type="${def.type||'modal'}">
       <div class="icon">${def.icon}</div>
       <div class="label">${def.label}</div>
@@ -638,16 +671,67 @@ function renderInfoCards(){
 }
 
 function openModal(key,label){
+  const def = infoDefs.find(d=>d.key===key);
   document.getElementById('modalTitle').textContent = label;
-  document.getElementById('modalText').value = store.get('info_'+key) || '';
+  const fieldsBox = document.getElementById('modalFields');
+  const textarea = document.getElementById('modalText');
+  const raw = store.get('info_'+key) || '';
+
+  if(def && def.fields){
+    let saved = {};
+    try{ saved = JSON.parse(raw) || {}; }catch(e){
+      // 예전에 자유 텍스트로 저장해둔 값이 있으면 사라지지 않도록 첫 번째 칸에 넣어준다
+      if(raw) saved[def.fields[0].key] = raw;
+    }
+    fieldsBox.style.display = 'block';
+    textarea.style.display = 'none';
+    fieldsBox.innerHTML = def.fields.map(f=>`
+      <div class="mf-row">
+        <label>${f.label}</label>
+        <input type="text" id="mf-${f.key}" placeholder="${f.placeholder||''}" value="${(saved[f.key]||'').replace(/"/g,'&quot;')}">
+      </div>
+    `).join('');
+  } else {
+    fieldsBox.style.display = 'none';
+    fieldsBox.innerHTML = '';
+    textarea.style.display = 'block';
+    textarea.value = raw;
+  }
+
   document.getElementById('modal-bg').style.display='flex';
   document.getElementById('modalSave').onclick = ()=>{
-    store.set('info_'+key, document.getElementById('modalText').value);
+    let value;
+    if(def && def.fields){
+      const obj = {};
+      def.fields.forEach(f=>{ obj[f.key] = document.getElementById('mf-'+f.key).value; });
+      value = JSON.stringify(obj);
+    } else {
+      value = textarea.value;
+    }
+    store.set('info_'+key, value);
     document.getElementById('modal-bg').style.display='none';
     renderInfoCards();
+    // 'info' 시트에 key를 행 구분용으로 써서 다른 기기와도 동기화한다 (date 컬럼 자리에 key가 들어감)
+    pushFieldToSheet('info', key, 'value', value);
   };
 }
 document.getElementById('modalClose').onclick = ()=> document.getElementById('modal-bg').style.display='none';
+
+function pullInfoFromSheet(){
+  const url = store.get('write_url');
+  if(!url || !navigator.onLine) return;
+  fetch(url + (url.includes('?') ? '&' : '?') + 'sheet=info')
+    .then(res => res.json())
+    .then(data => {
+      if(!data || !data.ok || !Array.isArray(data.rows) || !data.rows.length) return;
+      data.rows.forEach(r=>{
+        const key = String(r.date || '').trim(); // 'info' 시트에서는 date 컬럼 자리가 key로 쓰인다
+        if(key && r.value !== undefined) store.set('info_'+key, r.value || '');
+      });
+      renderInfoCards();
+    })
+    .catch(()=>{});
+}
 
 /* 필수정보 옆 아이콘 -> 실제 편집 가능한 구글시트 링크로 이동 (최초 1회 입력받아 저장) */
 document.getElementById('sheetLinkBtn').addEventListener('click', ()=>{
@@ -982,6 +1066,7 @@ function autoSyncIfPossible(){
   if(url && navigator.onLine) syncFromUrl(url, document.getElementById('syncMsg'), true);
   pullDiaryFromSheet();
   pullAppSyncOverridesFromSheet();
+  pullInfoFromSheet();
 }
 
 /* ---------------- online/offline indicator ---------------- */
