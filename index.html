@@ -253,7 +253,7 @@
 <body>
 
 <div style="background:#9C4A34; color:#fff; text-align:center; font-size:12px; padding:5px; font-weight:700; letter-spacing:.02em;">
-  빌드 버전: v4.0 (다이어리 사진 첨부) · 2026-08-19
+  빌드 버전: v4.1 (다이어리 사진선택 버그 수정) · 2026-08-19
 </div>
 
 <div id="topbar">
@@ -284,14 +284,14 @@
       <div class="diary-col">
         <div class="diary-col-label">나</div>
         <textarea id="diaryTextMe" placeholder="오늘 있었던 일, 느낀 점을…"></textarea>
-        <input type="file" accept="image/*" capture="environment" id="diaryPhotoFile_me" class="diary-photo-input">
+        <input type="file" accept="image/*" id="diaryPhotoFile_me" class="diary-photo-input">
         <div class="diary-photos" id="diaryPhotos_me"></div>
         <div class="msg" id="diaryPhotoStatus_me"></div>
       </div>
       <div class="diary-col">
         <div class="diary-col-label">배우자</div>
         <textarea id="diaryTextPartner" placeholder="오늘 있었던 일, 느낀 점을…"></textarea>
-        <input type="file" accept="image/*" capture="environment" id="diaryPhotoFile_partner" class="diary-photo-input">
+        <input type="file" accept="image/*" id="diaryPhotoFile_partner" class="diary-photo-input">
         <div class="diary-photos" id="diaryPhotos_partner"></div>
         <div class="msg" id="diaryPhotoStatus_partner"></div>
       </div>
