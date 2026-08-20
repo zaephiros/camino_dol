@@ -221,6 +221,13 @@
   #modalFields .mf-row input{
     flex:1; min-width:0; font-size:13px; padding:8px; border:1px solid var(--line); border-radius:6px; font-family:inherit;
   }
+  #modalFields .mf-image-row{ align-items:flex-start; }
+  #modalFields .mf-image-box{ flex:1; min-width:0; }
+  #modalFields .mf-image-box input[type="file"]{
+    width:100%; font-size:11.5px; padding:6px; border:1px solid var(--line); border-radius:6px; background:#fffdf8;
+  }
+  #modalFields .mf-image-preview{ display:block; max-width:100%; max-height:160px; border-radius:6px; margin-top:6px; border:1px solid var(--line); }
+  #modalFields .mf-image-status{ font-size:10.5px; color:var(--stone); margin-top:4px; }
   #modal .modal-actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:10px; }
   #modal button{ padding:7px 14px; border-radius:6px; border:none; font-size:12.5px; font-weight:600; cursor:pointer;}
   #modal .save{ background:var(--pine); color:#fff; }
@@ -236,7 +243,7 @@
 <body>
 
 <div style="background:#9C4A34; color:#fff; text-align:center; font-size:12px; padding:5px; font-weight:700; letter-spacing:.02em;">
-  빌드 버전: v3.8 (필수정보 비고칸 추가) · 2026-08-19
+  빌드 버전: v3.9 (필수정보 사진 첨부) · 2026-08-19
 </div>
 
 <div id="topbar">
@@ -621,28 +628,32 @@ const infoDefs = [
     {key:'plan', label:'요금제', placeholder:'예: 일 9,900원'},
     {key:'number', label:'번호', placeholder:'로밍/임대폰 번호'},
     {key:'note1', label:'비고1', placeholder:''},
-    {key:'note2', label:'비고2', placeholder:''}
+    {key:'note2', label:'비고2', placeholder:''},
+    {key:'image', label:'사진', type:'image'}
   ]},
   {key:'usage', label:'사용일자', icon:'📅', fields:[
     {key:'start', label:'시작일', placeholder:'예: 9/8'},
     {key:'end', label:'종료일', placeholder:'예: 10/7'},
     {key:'note1', label:'비고1', placeholder:''},
     {key:'note2', label:'비고2', placeholder:''},
-    {key:'note3', label:'비고3', placeholder:''}
+    {key:'note3', label:'비고3', placeholder:''},
+    {key:'image', label:'사진', type:'image'}
   ]},
   {key:'passport', label:'여권', icon:'🛂', fields:[
     {key:'name', label:'이름', placeholder:'여권상 영문 이름'},
     {key:'number', label:'여권번호', placeholder:''},
     {key:'expiry', label:'유효기간', placeholder:'만료일'},
     {key:'note1', label:'비고1', placeholder:''},
-    {key:'note2', label:'비고2', placeholder:''}
+    {key:'note2', label:'비고2', placeholder:''},
+    {key:'image', label:'사진', type:'image'}
   ]},
   {key:'idp', label:'국제면허', icon:'🚗', fields:[
     {key:'issued', label:'발급일', placeholder:''},
     {key:'expiry', label:'유효기간', placeholder:''},
     {key:'note1', label:'비고1', placeholder:''},
     {key:'note2', label:'비고2', placeholder:''},
-    {key:'note3', label:'비고3', placeholder:''}
+    {key:'note3', label:'비고3', placeholder:''},
+    {key:'image', label:'사진', type:'image'}
   ]},
   {key:'etc', label:'기타', icon:'ℹ️', hint:'긴급연락처, 보험 등'},
   {key:'sync_settings', label:'동기화', icon:'⚙️', type:'link'}
@@ -653,8 +664,12 @@ function infoPreviewText(def, raw){
   if(def.fields){
     try{
       const obj = JSON.parse(raw);
-      const firstFilled = def.fields.map(f=>obj[f.key]).find(v=>v);
-      return firstFilled ? (firstFilled.length>12 ? firstFilled.slice(0,11)+'…' : firstFilled) : '';
+      const textFields = def.fields.filter(f=>f.type!=='image');
+      const firstFilled = textFields.map(f=>obj[f.key]).find(v=>v);
+      if(firstFilled) return firstFilled.length>12 ? firstFilled.slice(0,11)+'…' : firstFilled;
+      const imgField = def.fields.find(f=>f.type==='image');
+      if(imgField && obj[imgField.key]) return '📷 사진';
+      return '';
     }catch(e){ return ''; }
   }
   return raw.length>14 ? raw.slice(0,13)+'…' : raw;
@@ -680,6 +695,75 @@ function renderInfoCards(){
   });
 }
 
+/* ---------------- 필수정보 사진 첨부 (클라이언트에서 압축 후 구글드라이브 업로드) ---------------- */
+function compressImageFile(file, maxDim, quality){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = e=>{
+      const img = new Image();
+      img.onload = ()=>{
+        let w = img.width, h = img.height;
+        if(w > maxDim || h > maxDim){
+          if(w > h){ h = Math.round(h * maxDim / w); w = maxDim; }
+          else { w = Math.round(w * maxDim / h); h = maxDim; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function handleImageFileSelect(infoKey, fieldKey){
+  const fileInput = document.getElementById('mf-'+fieldKey+'-file');
+  const file = fileInput.files[0];
+  if(!file) return;
+  const statusEl = document.getElementById('mf-'+fieldKey+'-status');
+  const previewEl = document.getElementById('mf-'+fieldKey+'-preview');
+  const hiddenEl = document.getElementById('mf-'+fieldKey);
+
+  statusEl.textContent = '이미지 처리 중...';
+  let dataUrl;
+  try{
+    dataUrl = await compressImageFile(file, 900, 0.6);
+  }catch(e){
+    statusEl.textContent = '⚠️ 이미지를 읽지 못했습니다';
+    return;
+  }
+  previewEl.src = dataUrl;
+  previewEl.style.display = 'block';
+  hiddenEl.value = dataUrl; // 업로드 전이라도 최소한 이 기기에는 바로 반영되도록 임시 저장
+
+  const url = store.get('write_url');
+  if(!url){ statusEl.textContent = '⚠️ 동기화 URL 미설정 — 이 기기에만 임시 저장됨 (동기화 설정에서 등록)'; return; }
+  if(!navigator.onLine){ statusEl.textContent = '오프라인 — 온라인 상태에서 다시 선택해주세요'; return; }
+
+  statusEl.textContent = '업로드 중...';
+  try{
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ sheet: 'image_upload', date: infoKey, field: fieldKey, value: dataUrl })
+    });
+    const data = await res.json();
+    if(data && data.ok && data.url){
+      hiddenEl.value = data.url;
+      previewEl.src = data.url;
+      statusEl.textContent = '업로드 완료 ✓ (아래 저장 버튼을 눌러 마무리하세요)';
+    } else {
+      statusEl.textContent = '⚠️ 업로드 실패 (' + ((data && data.error) || '알 수 없는 오류') + ') — 이 기기 미리보기만 유지됨';
+    }
+  }catch(e){
+    statusEl.textContent = '⚠️ 업로드 실패 (네트워크) — 이 기기 미리보기만 유지됨';
+  }
+}
+
 function openModal(key,label){
   const def = infoDefs.find(d=>d.key===key);
   document.getElementById('modalTitle').textContent = label;
@@ -695,12 +779,29 @@ function openModal(key,label){
     }
     fieldsBox.style.display = 'block';
     textarea.style.display = 'none';
-    fieldsBox.innerHTML = def.fields.map(f=>`
-      <div class="mf-row">
+    fieldsBox.innerHTML = def.fields.map(f=>{
+      if(f.type === 'image'){
+        const imgUrl = saved[f.key] || '';
+        return `<div class="mf-row mf-image-row">
+          <label>${f.label}</label>
+          <div class="mf-image-box">
+            <input type="hidden" id="mf-${f.key}" value="${imgUrl.replace(/"/g,'&quot;')}">
+            <input type="file" accept="image/*" id="mf-${f.key}-file">
+            <img id="mf-${f.key}-preview" class="mf-image-preview" src="${imgUrl}" style="${imgUrl?'':'display:none;'}">
+            <div class="mf-image-status" id="mf-${f.key}-status"></div>
+          </div>
+        </div>`;
+      }
+      return `<div class="mf-row">
         <label>${f.label}</label>
         <input type="text" id="mf-${f.key}" placeholder="${f.placeholder||''}" value="${(saved[f.key]||'').replace(/"/g,'&quot;')}">
-      </div>
-    `).join('');
+      </div>`;
+    }).join('');
+
+    def.fields.filter(f=>f.type==='image').forEach(f=>{
+      const fileInput = document.getElementById('mf-'+f.key+'-file');
+      fileInput.addEventListener('change', ()=> handleImageFileSelect(key, f.key));
+    });
   } else {
     fieldsBox.style.display = 'none';
     fieldsBox.innerHTML = '';
