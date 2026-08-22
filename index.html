@@ -140,7 +140,8 @@
 
   /* diary box */
   #diarybox{ margin-top:16px; background:var(--paper); border-radius:8px; padding:12px; box-shadow:var(--shadow); border:1px solid var(--line);}
-  #diarybox h3{ font-size:13px; margin:0 0 8px; display:flex; align-items:baseline; gap:6px; }
+  #diarybox h3{ font-size:13px; margin:0 0 8px; display:flex; align-items:center; gap:6px; }
+  #diaryDateInput{ font-size:12px; padding:4px 6px; border:1px solid var(--line); border-radius:6px; font-family:inherit; background:#fffdf8; }
   #diarybox .diary-date{ font-weight:400; color:var(--stone); font-size:11px; }
   .diary-cols{ display:flex; gap:8px; }
   .diary-col{ flex:1; min-width:0; }
@@ -253,7 +254,7 @@
 <body>
 
 <div style="background:#9C4A34; color:#fff; text-align:center; font-size:12px; padding:5px; font-weight:700; letter-spacing:.02em;">
-  빌드 버전: v4.2 (다이어리 사진 여러장 지원) · 2026-08-19
+  빌드 버전: v4.3 (필수정보 사진 자동저장 + 다이어리 날짜선택) · 2026-08-19
 </div>
 
 <div id="topbar">
@@ -279,7 +280,10 @@
   </div>
 
   <div id="diarybox">
-    <h3>오늘의 다이어리 <span class="diary-date" id="diaryDate"></span></h3>
+    <h3>다이어리
+      <input type="date" id="diaryDateInput">
+      <span class="diary-date" id="diaryDate"></span>
+    </h3>
     <div class="diary-cols">
       <div class="diary-col">
         <div class="diary-col-label">나</div>
@@ -538,7 +542,7 @@ function renderDiaryPhotos(person, iso){
 }
 
 async function handleDiaryPhotoSelect(person){
-  const iso = todayISO();
+  const iso = currentDiaryDate || todayISO();
   const p = DIARY_PEOPLE.find(pp=>pp.person===person);
   const fileInput = document.getElementById('diaryPhotoFile_'+person);
   const files = Array.from(fileInput.files || []);
@@ -591,28 +595,48 @@ async function handleDiaryPhotoSelect(person){
   });
 }
 
+let currentDiaryDate = null; // 지금 화면에 보여주고 있는 다이어리 날짜 (기본값: 오늘)
+
+function loadDiaryDate(dateStr){
+  currentDiaryDate = dateStr;
+  const d = new Date(dateStr+'T00:00:00');
+  const wd = ['일','월','화','수','목','금','토'][d.getDay()];
+  document.getElementById('diaryDate').textContent = `${d.getMonth()+1}월 ${d.getDate()}일 (${wd})`;
+  document.getElementById('diaryDateInput').value = dateStr;
+
+  DIARY_PEOPLE.forEach(p=>{
+    document.getElementById(p.boxId).value = store.get('diary_'+p.person+'_'+dateStr) || '';
+    renderDiaryPhotos(p.person, dateStr);
+  });
+  document.getElementById('diaryMsg').textContent = '';
+}
+
 function initDiaryBox(){
-  const iso = todayISO();
-  const t = new Date();
-  document.getElementById('diaryDate').textContent = `${t.getMonth()+1}월 ${t.getDate()}일`;
+  const dateInput = document.getElementById('diaryDateInput');
+  dateInput.min = itinerary[0].date;
+  dateInput.max = itinerary[itinerary.length-1].date;
+  loadDiaryDate(todayISO());
+
+  dateInput.addEventListener('change', ()=>{
+    if(dateInput.value) loadDiaryDate(dateInput.value);
+  });
 
   DIARY_PEOPLE.forEach(p=>{
     const box = document.getElementById(p.boxId);
-    box.value = store.get('diary_'+p.person+'_'+iso) || '';
     box.addEventListener('input', ()=>{
-      store.set('diary_'+p.person+'_'+iso, box.value);
+      const dateStr = currentDiaryDate;
+      store.set('diary_'+p.person+'_'+dateStr, box.value);
       const msg = document.getElementById('diaryMsg');
       msg.textContent = '저장 중...';
       clearTimeout(diarySaveTimers[p.person]);
       diarySaveTimers[p.person] = setTimeout(()=>{
-        pushFieldToSheet('diary', iso, p.field, box.value).then(result=>{
+        pushFieldToSheet('diary', dateStr, p.field, box.value).then(result=>{
           msg.textContent = (result.ok ? '저장됨' : syncStatusLabel(result)) + ' — ' + new Date().toLocaleTimeString('ko-KR');
           msg.style.color = result.ok ? '' : 'var(--brick)';
         });
       }, 800); // 타이핑 멈춘 뒤 0.8초 후 저장 (매 글자마다 전송하지 않도록)
     });
 
-    renderDiaryPhotos(p.person, iso);
     document.getElementById('diaryPhotoFile_'+p.person).addEventListener('change', ()=> handleDiaryPhotoSelect(p.person));
   });
 }
@@ -624,7 +648,7 @@ function pullDiaryFromSheet(){
     .then(res => res.json())
     .then(data => {
       if(!data || !data.ok || !Array.isArray(data.rows)) return;
-      const iso = todayISO();
+      const iso = currentDiaryDate || todayISO();
       data.rows.forEach(r=>{
         if(!r.date) return;
         const dateKey = String(r.date).trim();
@@ -633,7 +657,7 @@ function pullDiaryFromSheet(){
           if(r[p.photoField] !== undefined) store.set(diaryPhotosKey(p.person, dateKey), r[p.photoField] || '[]');
         });
       });
-      // 다른 기기에서 방금 쓴 내용이 있으면 오늘 칸에 반영 (단, 지금 타이핑 중이면 덮어쓰지 않음)
+      // 다른 기기에서 방금 쓴 내용이 있으면 지금 보고 있는 날짜 칸에 반영 (단, 타이핑 중이면 덮어쓰지 않음)
       DIARY_PEOPLE.forEach(p=>{
         const box = document.getElementById(p.boxId);
         if(document.activeElement !== box){
@@ -841,9 +865,17 @@ async function handleImageFileSelect(infoKey, fieldKey){
   previewEl.style.display = 'block';
   hiddenEl.value = dataUrl; // 업로드 전이라도 최소한 이 기기에는 바로 반영되도록 임시 저장
 
+  function saveLocalOnly(){
+    let obj = {};
+    try{ obj = JSON.parse(store.get('info_'+infoKey) || '{}') || {}; }catch(e){ obj = {}; }
+    obj[fieldKey] = dataUrl;
+    store.set('info_'+infoKey, JSON.stringify(obj));
+    renderInfoCards();
+  }
+
   const url = store.get('write_url');
-  if(!url){ statusEl.textContent = '⚠️ 동기화 URL 미설정 — 이 기기에만 임시 저장됨 (동기화 설정에서 등록)'; return; }
-  if(!navigator.onLine){ statusEl.textContent = '오프라인 — 온라인 상태에서 다시 선택해주세요'; return; }
+  if(!url){ saveLocalOnly(); statusEl.textContent = '⚠️ 동기화 URL 미설정 — 이 기기에만 저장됨 (동기화 설정에서 등록)'; return; }
+  if(!navigator.onLine){ saveLocalOnly(); statusEl.textContent = '오프라인 — 이 기기에만 저장됨'; return; }
 
   statusEl.textContent = '업로드 중...';
   try{
@@ -856,7 +888,16 @@ async function handleImageFileSelect(infoKey, fieldKey){
     if(data && data.ok && data.url){
       hiddenEl.value = data.url;
       previewEl.src = data.url;
-      statusEl.textContent = '업로드 완료 ✓ (아래 저장 버튼을 눌러 마무리하세요)';
+      // 다이어리처럼 업로드 성공 즉시 자동 저장 (별도로 '저장' 버튼을 안 눌러도 되도록)
+      let obj = {};
+      try{ obj = JSON.parse(store.get('info_'+infoKey) || '{}') || {}; }catch(e){ obj = {}; }
+      obj[fieldKey] = data.url;
+      const newRaw = JSON.stringify(obj);
+      store.set('info_'+infoKey, newRaw);
+      renderInfoCards();
+      pushFieldToSheet('info', infoKey, 'value', newRaw).then(result=>{
+        statusEl.textContent = result.ok ? '업로드 및 저장 완료 ✓' : syncStatusLabel(result);
+      });
     } else {
       statusEl.textContent = '⚠️ 업로드 실패 (' + ((data && data.error) || '알 수 없는 오류') + ') — 이 기기 미리보기만 유지됨';
     }
